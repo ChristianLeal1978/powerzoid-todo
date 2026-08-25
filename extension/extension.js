@@ -61,6 +61,22 @@ function _dueTimeLabel(task) {
     return Number.isNaN(d.getTime()) ? '' : _fmtTime(d);
 }
 
+function _todayStr() {
+    const now = new Date();
+    const mm  = String(now.getMonth() + 1).padStart(2, '0');
+    const dd  = String(now.getDate()).padStart(2, '0');
+    return `${now.getFullYear()}-${mm}-${dd}`;
+}
+
+// El filtro `today` de la API de Todoist puede incluir instancias de
+// tareas recurrentes u otros bordes que no calzan con "hoy" en la fecha
+// local del equipo. Nos quedamos solo con due.date === hoy para no
+// mostrar tareas atrasadas ni de otros días.
+function _onlyToday(tasks) {
+    const today = _todayStr();
+    return tasks.filter(t => t.due?.date === today);
+}
+
 function _sortTasks(tasks) {
     return [...tasks].sort((a, b) => {
         if (b.priority !== a.priority) return b.priority - a.priority;
@@ -167,8 +183,10 @@ class TaskDropdown extends St.BoxLayout {
             style_class: 'pzt-title',
             label:       _truncate(task.content, MAX_ROW_CHARS),
             x_expand:    true,
+            x_align:     Clutter.ActorAlign.START,
             y_align:     Clutter.ActorAlign.CENTER,
         });
+        titleBtn.label_actor?.set_x_align(Clutter.ActorAlign.START);
         titleBtn.label_actor?.clutter_text?.set_line_wrap(true);
         if (task.url) {
             titleBtn.connect('clicked', () => {
@@ -526,7 +544,7 @@ class TodoIndicator extends PanelMenu.Button {
                 try {
                     const data = JSON.parse(new TextDecoder().decode(bytes.get_data()));
                     const raw  = Array.isArray(data) ? data : (data.results || []);
-                    this._applyStatus({ state: 'ok', tasks: _sortTasks(raw) });
+                    this._applyStatus({ state: 'ok', tasks: _sortTasks(_onlyToday(raw)) });
                 } catch (e) {
                     this._applyStatus({ state: 'error', tasks: [], error: String(e) });
                 }
