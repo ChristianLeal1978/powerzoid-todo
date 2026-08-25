@@ -1,0 +1,8 @@
+{
+  "name": "PowerZoid Todo",
+  "description": "Muestra tu tarea pendiente de mayor prioridad para hoy (Todoist) en la barra superior. Hover para ver el resto por prioridad y marcarlas como hechas.",
+  "uuid": "powerzoid-todo@cleal.cl",
+  "version": 1,
+  "shell-version": ["45", "46", "47", "48", "49", "50"],
+  "url": "https://github.com/ChristianLeal1978/powerzoid-todo"
+}

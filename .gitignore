@@ -1,0 +1,10 @@
+# Paquetes de distribución
+*.zip
+*.tar.gz
+
+# Archivos del sistema
+.DS_Store
+*~
+*.swp
+
+.claude/
