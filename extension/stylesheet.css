@@ -77,3 +77,49 @@
     font-size: 0.85em;
     color: #9a9a9a;
 }
+
+.pzt-add-row {
+    margin-top: 6px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    spacing: 6px;
+}
+
+.pzt-add-entrybox {
+    spacing: 6px;
+}
+
+.pzt-add-entry {
+    font-size: 0.95em;
+    color: #eeeeee;
+}
+
+.pzt-add-entry .search-entry-icon {
+    color: #9a9a9a;
+}
+
+.pzt-add-send {
+    color: #6fbf73;
+    font-size: 1.05em;
+    padding: 0 6px;
+}
+
+.pzt-add-send:hover {
+    color: #8de392;
+}
+
+.pzt-add-chips {
+    spacing: 6px;
+}
+
+.pzt-add-chip {
+    font-size: 0.8em;
+    color: #cccccc;
+    background-color: rgba(255, 255, 255, 0.06);
+    border-radius: 10px;
+    padding: 3px 8px;
+}
+
+.pzt-add-chip:hover {
+    background-color: rgba(255, 255, 255, 0.12);
+}

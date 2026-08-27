@@ -41,6 +41,20 @@ const MAX_ROW_CHARS       = 56;
 const PRIORITY_COLORS = { 4: '#e53935', 3: '#eb8909', 2: '#246fe0', 1: '#9e9e9e' };
 const DEFAULT_DOT      = '#9e9e9e';
 
+// Opciones rápidas para agregar tareas desde el dropdown.
+const QUICK_DATE_OPTIONS = [
+    { label: 'Hoy',          value: 'today' },
+    { label: 'Mañana',       value: 'tomorrow' },
+    { label: 'Próxima semana', value: 'next week' },
+    { label: 'Sin fecha',    value: null },
+];
+const QUICK_PRIORITY_OPTIONS = [
+    { label: 'P1', priority: 4, color: PRIORITY_COLORS[4] },
+    { label: 'P2', priority: 3, color: PRIORITY_COLORS[3] },
+    { label: 'P3', priority: 2, color: PRIORITY_COLORS[2] },
+    { label: 'P4', priority: 1, color: PRIORITY_COLORS[1] },
+];
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers de formato
@@ -107,17 +121,30 @@ class TaskDropdown extends St.BoxLayout {
         });
         this._indicator = indicator;
         Main.layoutManager.addChrome(this, { trackFullscreen: false });
+
+        // El contenido dinámico (estado / lista de tareas) se reconstruye en
+        // cada actualización; la fila de "agregar tarea" es persistente para
+        // no perder lo que el usuario está escribiendo ni sus pickers.
+        this._contentBox = new St.BoxLayout({ vertical: true, style_class: 'pzt-content' });
+        this.add_child(this._contentBox);
+
+        this._addMenuManager = new PopupMenu.PopupMenuManager(indicator);
+        this._addRow = this._buildAddRow();
+        this._addRow.hide();
+        this.add_child(this._addRow);
     }
 
     setContent(status) {
-        this.destroy_all_children();
+        this._contentBox.destroy_all_children();
 
         const addLine = (text, styleClass = 'pzt-row-msg') => {
             const label = new St.Label({ text, style_class: styleClass });
             label.clutter_text.set_line_wrap(true);
-            this.add_child(label);
+            this._contentBox.add_child(label);
             return label;
         };
+
+        this._addRow.visible = status.state === 'ok';
 
         if (status.state === 'starting') {
             addLine('Cargando…');
@@ -151,10 +178,147 @@ class TaskDropdown extends St.BoxLayout {
         });
         const list = new St.BoxLayout({ vertical: true, style_class: 'pzt-list' });
         scroll.set_child(list);
-        this.add_child(scroll);
+        this._contentBox.add_child(scroll);
 
         for (const task of status.tasks)
             list.add_child(this._buildRow(task));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Fila para agregar una tarea nueva (lista, fecha, prioridad)
+    // ─────────────────────────────────────────────────────────────────────
+
+    _buildAddRow() {
+        const container = new St.BoxLayout({ vertical: true, style_class: 'pzt-add-row' });
+
+        const entryBox = new St.BoxLayout({ style_class: 'pzt-add-entrybox' });
+        const entry = new St.Entry({
+            style_class: 'pzt-add-entry',
+            hint_text:   'Nueva tarea…',
+            can_focus:   true,
+            x_expand:    true,
+        });
+        entry.clutter_text.connect('activate', () => this._submitAdd());
+        entryBox.add_child(entry);
+
+        const sendBtn = new St.Button({ style_class: 'pzt-add-send', label: '➤' });
+        sendBtn.connect('clicked', () => this._submitAdd());
+        entryBox.add_child(sendBtn);
+        container.add_child(entryBox);
+
+        const chipsBox = new St.BoxLayout({ style_class: 'pzt-add-chips' });
+
+        this._projectChip = new St.Button({ style_class: 'pzt-add-chip' });
+        this._projectChip.connect('clicked', () => this._openProjectPicker());
+        chipsBox.add_child(this._projectChip);
+
+        this._dateChip = new St.Button({ style_class: 'pzt-add-chip' });
+        this._dateChip.connect('clicked', () => this._openDatePicker());
+        chipsBox.add_child(this._dateChip);
+
+        this._prioChip = new St.Button({ style_class: 'pzt-add-chip' });
+        this._prioChip.connect('clicked', () => this._openPriorityPicker());
+        chipsBox.add_child(this._prioChip);
+
+        container.add_child(chipsBox);
+
+        this._addEntry       = entry;
+        this._addProjectId   = null;
+        this._addProjectName = 'Bandeja de entrada';
+        this._addDate        = QUICK_DATE_OPTIONS[0];
+        this._addPriority    = QUICK_PRIORITY_OPTIONS[3];
+
+        this._projectMenu = this._createPickerMenu(this._projectChip);
+        this._dateMenu    = this._createPickerMenu(this._dateChip);
+        this._prioMenu    = this._createPickerMenu(this._prioChip);
+
+        this._refreshChipLabels();
+
+        return container;
+    }
+
+    _createPickerMenu(sourceActor) {
+        const menu = new PopupMenu.PopupMenu(sourceActor, 0.25, St.Side.BOTTOM);
+        Main.uiGroup.add_child(menu.actor);
+        menu.actor.hide();
+        this._addMenuManager.addMenu(menu);
+        return menu;
+    }
+
+    _openProjectPicker() {
+        if (this._projectMenu.isOpen) { this._projectMenu.close(); return; }
+        this._projectMenu.removeAll();
+
+        const inboxItem = new PopupMenu.PopupMenuItem('Bandeja de entrada');
+        inboxItem.connect('activate', () => this._setProject(null, 'Bandeja de entrada'));
+        this._projectMenu.addMenuItem(inboxItem);
+
+        for (const p of this._indicator.getProjects()) {
+            const item = new PopupMenu.PopupMenuItem(p.name);
+            item.connect('activate', () => this._setProject(p.id, p.name));
+            this._projectMenu.addMenuItem(item);
+        }
+        this._projectMenu.open();
+    }
+
+    _openDatePicker() {
+        if (this._dateMenu.isOpen) { this._dateMenu.close(); return; }
+        this._dateMenu.removeAll();
+
+        for (const opt of QUICK_DATE_OPTIONS) {
+            const item = new PopupMenu.PopupMenuItem(opt.label);
+            item.connect('activate', () => this._setDate(opt));
+            this._dateMenu.addMenuItem(item);
+        }
+        this._dateMenu.open();
+    }
+
+    _openPriorityPicker() {
+        if (this._prioMenu.isOpen) { this._prioMenu.close(); return; }
+        this._prioMenu.removeAll();
+
+        for (const opt of QUICK_PRIORITY_OPTIONS) {
+            const item = new PopupMenu.PopupMenuItem(opt.label);
+            item.label.set_style(`color: ${opt.color};`);
+            item.connect('activate', () => this._setPriority(opt));
+            this._prioMenu.addMenuItem(item);
+        }
+        this._prioMenu.open();
+    }
+
+    _setProject(id, name) {
+        this._addProjectId = id;
+        this._addProjectName = name;
+        this._refreshChipLabels();
+    }
+
+    _setDate(opt) {
+        this._addDate = opt;
+        this._refreshChipLabels();
+    }
+
+    _setPriority(opt) {
+        this._addPriority = opt;
+        this._refreshChipLabels();
+    }
+
+    _refreshChipLabels() {
+        this._projectChip.label = `#  ${_truncate(this._addProjectName, 16)}`;
+        this._dateChip.label    = `📅  ${this._addDate.label}`;
+        this._prioChip.label    = `🚩  ${this._addPriority.label}`;
+        this._prioChip.set_style(`color: ${this._addPriority.color};`);
+    }
+
+    _submitAdd() {
+        const text = this._addEntry.get_text().trim();
+        if (!text) return;
+        this._addEntry.set_text('');
+        this._indicator.createTask({
+            content:   text,
+            projectId: this._addProjectId,
+            dueString: this._addDate.value,
+            priority:  this._addPriority.priority,
+        });
     }
 
     _buildRow(task) {
@@ -236,6 +400,11 @@ class TaskDropdown extends St.BoxLayout {
     }
 
     destroy() {
+        for (const menu of [this._projectMenu, this._dateMenu, this._prioMenu]) {
+            if (!menu) continue;
+            this._addMenuManager.removeMenu(menu);
+            menu.destroy();
+        }
         Main.layoutManager.removeChrome(this);
         super.destroy();
     }
@@ -265,6 +434,7 @@ class TodoIndicator extends PanelMenu.Button {
         this._hideTimer        = null;
         this._currentDotColor  = DEFAULT_DOT;
         this._pinned            = false;
+        this._projects           = [];
 
         // ── Panel: [●] [título] [+n] ───────────────────────────────────────
         this._dot = new St.Label({
@@ -522,10 +692,73 @@ class TodoIndicator extends PanelMenu.Button {
 
     _startPolling() {
         this._fetchTasks();
+        this._fetchProjects();
         this._pollTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, POLL_MS, () => {
             this._fetchTasks();
             return GLib.SOURCE_CONTINUE;
         });
+    }
+
+    getProjects() {
+        return this._projects;
+    }
+
+    _fetchProjects() {
+        const token = this._ext.getToken();
+        if (!token) return;
+
+        let msg;
+        try {
+            msg = Soup.Message.new('GET', `${API_BASE}/projects`);
+            this._authHeaders(msg);
+        } catch (_e) {
+            return;
+        }
+
+        this._session.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, null,
+            (session, result) => {
+                let bytes;
+                try {
+                    bytes = session.send_and_read_finish(result);
+                } catch (_e) {
+                    return;
+                }
+                const code = msg.get_status();
+                if (code < 200 || code >= 300) return;
+
+                try {
+                    const data = JSON.parse(new TextDecoder().decode(bytes.get_data()));
+                    const raw  = Array.isArray(data) ? data : (data.results || []);
+                    this._projects = raw.map(p => ({ id: p.id, name: p.name }));
+                } catch (_e) {}
+            }
+        );
+    }
+
+    createTask({ content, projectId, dueString, priority }) {
+        const payload = { content };
+        if (projectId) payload.project_id = projectId;
+        if (dueString) payload.due_string = dueString;
+        if (priority)  payload.priority = priority;
+
+        let msg;
+        try {
+            msg = Soup.Message.new('POST', `${API_BASE}/tasks`);
+            this._authHeaders(msg);
+            msg.set_request_body_from_bytes(
+                'application/json',
+                new GLib.Bytes(new TextEncoder().encode(JSON.stringify(payload)))
+            );
+        } catch (_e) {
+            return;
+        }
+
+        this._session.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, null,
+            (session, result) => {
+                try { session.send_and_read_finish(result); } catch (_e) {}
+                this._fetchTasks();
+            }
+        );
     }
 
     _fetchTasks() {
