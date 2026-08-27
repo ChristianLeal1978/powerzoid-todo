@@ -4,6 +4,7 @@
  *
  * Muestra la tarea pendiente de mayor prioridad para hoy (Todoist).
  * Hover      → despliega hacia abajo el resto de tus tareas de hoy, por prioridad
+ * Clic izq.  → fija la lista abierta (vuelve a pulsar para cerrarla)
  * Clic der.  → menú (actualizar, alineación, tamaño de letra, configuración)
  */
 
@@ -263,6 +264,7 @@ class TodoIndicator extends PanelMenu.Button {
         this._showTimer        = null;
         this._hideTimer        = null;
         this._currentDotColor  = DEFAULT_DOT;
+        this._pinned            = false;
 
         // ── Panel: [●] [título] [+n] ───────────────────────────────────────
         this._dot = new St.Label({
@@ -301,12 +303,18 @@ class TodoIndicator extends PanelMenu.Button {
 
         this.menu.connect('open-state-changed', (_menu, open) => {
             if (!open) return;
-            this._hideDropdownNow();
-            if (this._lastPressButton === 3) return;
-            // Clic izquierdo (u otro): el menú de clic derecho no aplica aquí.
+            if (this._lastPressButton === 3) {
+                // Clic derecho: se abre el menú de configuración, la lista fijada se cierra.
+                this._pinned = false;
+                this._hideDropdownNow();
+                return;
+            }
+            // Clic izquierdo (u otro): en vez de abrir el menú de configuración,
+            // fijamos (o soltamos) la lista de tareas para que quede abierta.
             this._lastPressButton = null;
             GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
                 this.menu.close();
+                this._toggleDropdownPinned();
                 return GLib.SOURCE_REMOVE;
             });
         });
@@ -416,6 +424,7 @@ class TodoIndicator extends PanelMenu.Button {
 
     _onHoverLeave() {
         if (this._showTimer) { GLib.source_remove(this._showTimer); this._showTimer = null; }
+        if (this._pinned) return;
         if (this._hideTimer) return;
         this._hideTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, HOVER_HIDE_DELAY_MS, () => {
             this._hideTimer = null;
@@ -428,6 +437,20 @@ class TodoIndicator extends PanelMenu.Button {
         if (this._showTimer) { GLib.source_remove(this._showTimer); this._showTimer = null; }
         if (this._hideTimer) { GLib.source_remove(this._hideTimer); this._hideTimer = null; }
         this._dropdown.hide();
+    }
+
+    // Clic izquierdo sobre el indicador: fija la lista abierta (ignora el
+    // hover-leave) o, si ya estaba fijada, la vuelve a cerrar.
+    _toggleDropdownPinned() {
+        this._pinned = !this._pinned;
+        if (this._pinned) {
+            if (this._showTimer) { GLib.source_remove(this._showTimer); this._showTimer = null; }
+            if (this._hideTimer) { GLib.source_remove(this._hideTimer); this._hideTimer = null; }
+            this._dropdown.setContent(this._lastStatus);
+            this._dropdown.showBelow(this);
+        } else {
+            this._hideDropdownNow();
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────
