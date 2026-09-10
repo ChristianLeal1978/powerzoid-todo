@@ -242,6 +242,12 @@ class TaskDropdown extends St.BoxLayout {
         Main.uiGroup.add_child(menu.actor);
         menu.actor.hide();
         this._addMenuManager.addMenu(menu);
+        // Al abrir un picker (lista/fecha/prioridad) cancelamos cualquier
+        // cierre pendiente del dropdown: sin esto, un leave-event espurio
+        // generado por el clic en el chip podía cerrar toda la ventana.
+        menu.connect('open-state-changed', (_m, isOpen) => {
+            if (isOpen) this._indicator._onHoverEnter();
+        });
         return menu;
     }
 
