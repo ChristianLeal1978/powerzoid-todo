@@ -683,12 +683,15 @@ class TodoIndicator extends PanelMenu.Button {
         if (align === this._currentAlign) return;
         this._ext.savePanelPosition(align);
 
-        // Reinicio completo de la extensión: evita bugs de rendering al
-        // reubicar actores directamente entre boxes del panel.
-        const uuid = this._ext.uuid;
+        // Recrea el indicador desde cero: evita un bug de rendering de
+        // GNOME Shell 50 al reubicar actores directamente entre boxes del panel.
+        // No se usa extensionManager.disable/enableExtension: en Shell 50 son
+        // asíncronos y, encadenados, dejan la extensión en estado INACTIVE
+        // (el ícono desaparece). Mismo arreglo que powerzoid-claude/deploy.
+        const ext = this._ext;
         GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-            Main.extensionManager.disableExtension(uuid);
-            Main.extensionManager.enableExtension(uuid);
+            ext.disable();
+            ext.enable();
             return GLib.SOURCE_REMOVE;
         });
     }
